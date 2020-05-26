@@ -47,3 +47,119 @@ mmcblk0      179:128  0 29.8G  0 disk
 ├─mmcblk0p3  179:131  0   32M  0 part 
 └─mmcblk0p4  179:132  0  5.2G  0 part /
 ```
+Documentation states, "if it's not automatically done, please run ```resize-helper```."  That file does not exist.  [I found it here](https://github.com/fboudra/96boards-tools/blob/master/resize-helper), but it didn't work.  Long story short, the image itself was not written correctly, so even resize2fs didn't work properly at first.  I had to do combinations of:
+
+* touch /forcefsck [and reboot]
+* Use cfdisk to fix the partition, [needs to be written]
+* sudo resize2fs -f /dev/mmcblk0p4
+
+Before it "took."
+```
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/root        30G  4.2G   24G  15% /
+```
+Not I could fix other things.
+
+DNS doesn't work.  This might be because of /etc above, not sure. But I had to put their own mirror server in the /etc/hosts file just so that it could get packages:
+```
+127.0.0.1 localhost
+127.0.1.1 orangepi
+101.6.8.193 mirrors.tuna.tsinghua.edu.cn
+# The following lines are desirable for IPv6 capable hosts
+::1     localhost ip6-localhost ip6-loopback
+fe00::0 ip6-localnet
+ff00::0 ip6-mcastprefix
+ff02::1 ip6-allnodes
+ff02::2 ip6-allrouters
+```
+Next, run "unminimize" to fix the "minimized packaging setup", and this will take a while:
+```
+sudo unminimize
+```
+While the package **iw** is installed, **wireless-tools** and **wpasupplicant** is not, and you can't fix wireless until you do:
+```
+sudo apt install wireless-tools wpasupplicant
+```
+Now you have to disable all the bratty NetworkManager stuff:
+```
+sudo systemctl disable NetworkManager-wait-online NetworkManager-dispatcher NetworkManager
+```
+Search for your wireless networks (and make sure it works):
+```
+orangepi@OrangePi:~$ sudo iwlist wlan0  scan | grep ESSID
+                    ESSID:"Abraham Linksys"
+                    ESSID:"Omega-K2SO"
+                    ESSID:"DIRECT-roku-411"
+                    ESSID:"Wi-Fight the Inevitable"
+                    ESSID:"It Burns When IP"
+                    ESSID:"NETGEAR64"
+                    ESSID:"FBI Surveillance Van 12"
+                    ESSID:"Wireless-AC"
+                    ESSID:"Puggalicious-5G"
+```
+Create the wpa_supplicant config file; note the space *before* the command, or the password will be stored in your bash history file.
+```
+ wpa_passphrase your-ESSID your-wifi-passphrase | sudo tee /etc/wpa_supplicant.conf 
+```
+If your wireless router doesn’t broadcast ESSID, then you need to add the following line in /etc/wpa_supplicant.conf file below "psk=": ```scan_ssid=1```
+
+Stop Network Manager:
+```
+sudo systemctl stop NetworkManager
+```
+Test, should have "wlan0: CTRL-EVENT-CONNECTED" listed.  Control+C to stop.
+```
+sudo wpa_supplicant -c /etc/wpa_supplicant.conf -i wlan0
+Successfully initialized wpa_supplicant
+wlan0: Trying to associate with 00:02:6f:8e:38:51 (SSID='KatanaTikiKoi' freq=2437 MHz)
+wlan0: Associated with 00:02:6f:8e:38:51
+wlan0: CTRL-EVENT-SUBNET-STATUS-UPDATE status=0
+wlan0: WPA: Key negotiation completed with 00:02:6f:8e:38:51 [PTK=CCMP GTK=CCMP]
+wlan0: CTRL-EVENT-CONNECTED - Connection to 00:02:6f:8e:38:51 completed [id=0 id_str=]
+```
+You can now run it it background in another window
+```
+sudo wpa_supplicant -B -c /etc/wpa_supplicant.conf -i wlan0
+```
+Get an IP address for your wireless connection
+```
+sudo dhclient wlan0
+```
+To automatically connect to wireless network at boot time, we need to edit the wpa_supplicant.service file.
+```
+sudo cp /lib/systemd/system/wpa_supplicant.service /etc/systemd/system/wpa_supplicant.service
+sudo vim /etc/systemd/system/wpa_supplicant.service
+```
+Change the ExecStart line to this and comment out the Alias:
+```
+ExecStart=/sbin/wpa_supplicant -u -s -c /etc/wpa_supplicant.conf -i wlan0
+[...]
+# Alias=dbus-fi.w1.wpa_supplicant1.service
+```
+Enable the service at boot
+```
+sudo systemctl enable wpa_supplicant.service
+```
+Create a new service to get an IP address:
+```
+sudo vim /etc/systemd/system/dhclient.service
+```
+Put in the following:
+```
+        [Unit]
+        Description= DHCP Client
+        Before=network.target
+        After=wpa_supplicant.service
+
+        [Service]
+        Type=simple
+        ExecStart=/sbin/dhclient wlan0 -v
+        ExecStop=/sbin/dhclient wlan0 -r
+        
+        [Install]
+        WantedBy=multi-user.target
+```
+Enable THAT service:
+```
+sudo systemctl enable dhclient.service
+```
