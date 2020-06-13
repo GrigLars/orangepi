@@ -58,7 +58,7 @@ Before it "took."
 Filesystem      Size  Used Avail Use% Mounted on
 /dev/root        30G  4.2G   24G  15% /
 ```
-Not I could fix other things.
+Now I could fix other things.
 
 DNS doesn't work.  This might be because of /etc above, not sure. But I had to put their own mirror server in the /etc/hosts file just so that it could get packages:
 ```
