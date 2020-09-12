@@ -15,7 +15,7 @@ I loaded it onto the card, made a crude case out of some scraps of retail packag
 
 Change OrangePi user to not ask for a sudo password.  This drove me nuts.  I also needed it for an ansible push later on for setup.  You'll have to log back in for changes to take effect.
 
-```sudo echo "orangepi ALL=(ALL) NOPASSWD: ALL" /etc/sudoers.d/orangepi```
+```sudo echo "orangepi ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/orangepi```
 
 For some reason, all of /etc is owned by orangepi, which causes weird errors when the environment expects it to be owned by root.
 
